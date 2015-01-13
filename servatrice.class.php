@@ -279,7 +279,7 @@ class Servatrice {
 				`country` = '". $fields['country']. "', 
 				`registrationDate` = '". $fields['registrationDate']. "', 
 				`active` = '". $fields['active']. "', 
-				`token` = '". $fields['token']. "'
+				`token` = '". $fields['token']. "' 
 			WHERE `id` = '". $user->id ."'";
 			
 		//Send the query off.
