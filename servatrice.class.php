@@ -197,6 +197,99 @@ class Servatrice {
 		//Return the ServatriceUser of the queried user.
 		return new ServatriceUser($result->fetch_assoc());		
 	}
+	public function updateUser($userid, $realname = '', $gender = 'r', $country = '') {
+		//Update the users details. Avatar does not get updated here.
+		
+		//Prepare the error array.
+		$errors = array();
+		
+		//Check if the gender input is valid.
+		if($gender != 'r' && $gender != 'm' && $gender != 'f') $errors['gender'] = "Invalid gender character";
+		
+		//Check if the country code is valid.
+		if(!empty($country) && !$this->validateCountry($country)) $errors['country'] = "Invalid country code";
+		
+		//Create SQL safe realname
+		$realname = $this->sql->real_escape_string($realname);
+				
+		//Update all modified fields
+		//TODO: Check if its correct the hardway for error reporting.
+		$query = "UPDATE {$this->prefix}_users SET `realname` = '{$realname}', `gender` = '{$gender}', `country` = '{$country}' WHERE `id` = '{$userid}'";
+		$this->sql->query($query);	
+	}
+	public function activateUser($username, $token) {
+		//Make the username and token SQL safe
+		$username = $this->sql->real_escape_string($username);
+		$token = $this->sql->real_escape_string($token);
+		
+		//Update active to true were username and token matches.
+		//TODO: Check if its correct the hardway for error reporting.
+		$query = "UPDATE {$this->prefix}_users SET `active` = true WHERE `name` = '{$username}' AND `token` = '{$token}'";
+		$this->sql->query($query);
+	}
+	public function updateUserPassword($userid, $password) {
+		//Updates the user password.
+		
+		//==== NOTE ====
+		// This method DOES NOT check permisions, it just does it without questions. Make sure you all ways check before using this function!
+		
+		$hashed_password = $this->sql->real_escape_string($this->encryptPassword($password));		
+		
+		//TODO: Check if its correct the hardway for error reporting.
+		$query = "UPDATE {$this->prefix}_users SET `password_sha512` = '{$hashed_password}' WHERE `id` = '{$userid}'";
+		$this->sql->query($query);		
+	}
+	public function setUser($user) {
+		//Sets the Servatrice user.
+		
+		//==== NOTE ====
+		// This method DOES NOT check permisions, it just does it without questions. Make sure you all ways check before using this function!
+		//Catch any errors that may occur.
+		
+		$errors = array();
+		
+		//Check if the gender input is valid.
+		if($user->gender != 'r' && $user->gender != 'm' && $user->gender != 'f') $errors['gender'] = "Invalid gender character";
+		
+		//Check if the country code is valid.
+		if(!empty($user->country) && !$this->validateCountry($user->country)) $errors['country'] = "Invalid country code";
+	
+		//Stick everything into an array so it can be modified and used more easily in the query.
+		//While we are at it, make the username etc an escaped string to use with MySQL.
+		$fields = array( 
+			'name' => $this->sql->real_escape_string($user->name),
+			'email' => $this->sql->real_escape_string($user->email),
+			'realname' => $this->sql->real_escape_string($user->realname),
+			'gender' =>	$user->gender,
+			'country' => $user->country,
+			'registrationDate' => $user->registrationDate,
+			'active' => $user->active,
+			'token' => $this->sql->real_escape_string($user->token)
+		);
+						
+		//If we have errors, return the list, proventing the creation of an account
+		if(count($errors) > 0) return $errors;
+		
+		//Prepare the query for the updated user.
+		$query = "UPDATE {$this->prefix}_users SET 
+				`name` = '". $fields['name']. "', 
+				`email` = '". $fields['email']. "',  
+				`realname` = '". $fields['realname']. "', 
+				`gender` = '". $fields['gender']. "', 
+				`country` = '". $fields['country']. "', 
+				`registrationDate` = '". $fields['registrationDate']. "', 
+				`active` = '". $fields['active']. "', 
+				`token` = '". $fields['token']. "'
+			)";
+			
+		//Send the query off.
+		$this->sql->query($query);
+		
+		//TODO: Catch errors from the query and throw them here.
+		return $errors;
+	}
+	
+	
 	#endregion
 	
 	#region helpers
