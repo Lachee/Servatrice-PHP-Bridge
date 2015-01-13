@@ -13,6 +13,12 @@ class Servatrice {
 	//The prefix to apend to the database tables
 	public $prefix = "cockatrice";
 	
+	//How long does it take (in seconds) for the server to post another uptime?
+	public $uptimeDelay = 15;
+	
+	//The tolerence of the uptime delay in percent (eg 50% = 0.5)
+	public $uptimeTolerence = 0.50;
+	
 	//The database connection. Not sure if this is the best way to do this.
 	protected $sql;
 	
@@ -92,6 +98,59 @@ class Servatrice {
 				
 		return $sessions;
 	}
+	public function getUptime() {
+		//	$query      = 'SELECT * FROM '.SERVATRICE_PREFIX.'_uptime ORDER BY timest DESC LIMIT 1';  
+		
+		$query = "SELECT * FROM {$this->prefix}_uptime ORDER BY timest DESC LIMIT 1";
+		$result = $this->sql->query($query);
+		
+		//Obviously the server has yet to given us a uptime.
+		if($result->num_rows != 1) return null;
+		
+		$utime = $result->fetch_assoc();
+				
+		//Calculate the time difference between now and the last uptime post.
+		$timest = strtotime($utime['timest']);
+		$timenw = $_SERVER['REQUEST_TIME'];	
+		$timeDiff = $timenw - $timest;
+		$utime['time_diff'] = $timeDiff;
+		
+		//If the uptime post is greater than $uptimeDelay (+ some tolerence), the server must be down
+		//Cacluate the tolerence of uptime. eg: 15 * 20% or 15 * 200% in the default case.
+		$tolerence = $this->uptimeDelay * $this->uptimeTolerence;
+		$maxDiff = $this->uptimeDelay + $tolerence;
+		
+		//Actually do the downtime checking
+		$utime['is_down'] = $timeDiff >= $maxDiff;
+		
+		//Return the uptime array.
+		return $utime;
+	}
+	public function getActualUserCount() {
+		//This function returns the total users, the guests and the registered.
+		
+		//Get the latest uptime, which contains total userers.... and if the server is down.
+		$uptime = $this->getUptime();
+				
+		//Get the online sessions, which contains registered users.
+		$sessions = $this->getOnlineSessions();
+		
+		//Calculate how many guests there are given total and registered
+		$tusers = $uptime['is_down'] ? 0 : $uptime['users_count'];
+		$susers = $uptime['is_down'] ? 0 : count($sessions);
+		$gusers = $tusers - $susers;
+		
+		//stick it in a nice array.
+		$userCount = array(
+			'total' => $tusers,
+			'registered' => $susers,
+			'guests' => $gusers
+		);
+		
+		//Return the nice array.
+		return $userCount;		
+	}
+	
 	#endregion
 	
 	#region User Authication
@@ -303,6 +362,7 @@ class Servatrice {
 		"UPDATE {$this->prefix}_users SET `avatar_bmp` = '' WHERE `id` = '{$userid}'";
 		$this->sql->query($query);
 	}
+	
 	#endregion
 	
 	#region helpers
