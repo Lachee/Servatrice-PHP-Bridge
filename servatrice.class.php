@@ -9,10 +9,16 @@
  * @version    Release: 1
  */
 class Servatrice {
+
+	//The prefix to apend to the database tables
 	public $prefix = "cockatrice";
+	
+	//The database connection. Not sure if this is the best way to do this.
 	protected $sql;
 	
 	#region countries
+	
+	//Here is a list of all countries Cockatrice currently has suported.
 	public $countries = array(
 		'ar' => 'Argentina',
 		'at' => 'Austria',
@@ -67,22 +73,23 @@ class Servatrice {
 	#endregion
 	
 	public function __construct($host, $database, $username, $password) {
+		//Establish a link to the database. Could potentially just require a connection instead of making a new one?
 		$this->sql = new mysqli($host, $username, $password, $database);
 		if($this->sql->connect_error) die("Servatrice Connection Failed: " . $this->sql->connect_error);
 	}
 	
 	#region Statictics
 	public function getOnlineSessions() {
-
+	
+		//Select all sessions that are still connected (end_time is null)
 		$query = "SELECT * FROM {$this->prefix}_sessions WHERE end_time IS NULL";
 		$result = $this->sql->query($query);
 		
-		$sessions = array();
-		
+		//Fetch all retrived sessions and stick them into an array to return.
+		$sessions = array();		
 		if($result->num_rows > 0) 	
 			while($row = $result->fetch_assoc()) $sessions[] = $row;		
-		
-		
+				
 		return $sessions;
 	}
 	#endregion
@@ -90,15 +97,21 @@ class Servatrice {
 	#region User Authication
 	public function registerUser($username, $email, $password, $realname = '', $gender = 'r', $country = '', $active = true, $token = '') {
 		
+		//Catch any errors that may occur.
 		$errors = array();
+		
+		//Check if the gender input is valid.
 		if($gender != 'r' && $gender != 'm' && $gender != 'f') $errors['gender'] = "Invalid gender character";
+		
+		//Check if the country code is valid.
 		if(!empty($country) && !$this->validateCountry($country)) $errors['country'] = "Invalid country code";
 	
-		//First stick everything into a nice array list.
+		//Stick everything into an array so it can be modified and used more easily in the query.
+		//While we are at it, make the username etc an escaped string to use with MySQL.
 		$fields = array( 
 			'name' => $this->sql->real_escape_string($username),
 			'email' => $this->sql->real_escape_string($email),
-			'password_sha512' => $this->sql->real_escape_string(Servatrice::encryptPassword($password)),
+			'password_sha512' => $this->sql->real_escape_string($this->encryptPassword($password)),
 			'realname' => $this->sql->real_escape_string($realname),
 			'gender' =>	$gender,
 			'country' => $country,
@@ -116,19 +129,22 @@ class Servatrice {
 			$match_username = false;
 			$match_email = false;
 			
+			//Foreach match, check if it conflics with username, email or both.
 			while($row = $result->fetch_assoc()) {
 				if($row['name'] == $username) $match_username = true;
 				if($row['email'] == $email) $match_email = true;
 				if($match_username && $match_email) break;
 			}			
 			
+			//Log each errors to the array to return.
 			if($match_username) $errors['username'] = "Username already exists";
 			if($match_email)	$errors['email']	= "Email already exists";
 		}
 		
+		//If we have errors, return the list, proventing the creation of an account
 		if(count($errors) > 0) return $errors;
 		
-		//We had no matches, so it is safe to register the users.
+		//Prepare the query for the new user.
 		$query = "INSERT INTO {$this->prefix}_users ".
 			"(`name`, `email`, `password_sha512`, `realname`, `gender`, `country`, `registrationDate`, `active`, `token`) VALUES (
 				'". $fields['name']. "', 
@@ -142,48 +158,72 @@ class Servatrice {
 				'". $fields['token']. "'
 			)";
 			
+		//Send the query off.
 		$this->sql->query($query);
+		
+		//TODO: Catch errors from the query and throw them here.
 		return $errors;
 	}
 	
 	public function getAuthicatedUser($username, $password) {
+		//This checks if the users password is corrent and if it is, returns the ServatriceUser.
+
+		//Retrive the user with username and get everything. Could use wildcard, but might give unwanted information in later versions of Servatrice.
 		$query = "SELECT `password_sha512`, `id`, `admin`, `active`, `name`, `realname`, `email`, `token`, `gender`, `country`, `registrationDate`, `avatar_bmp` FROM {$this->prefix}_users WHERE `name` = '{$username}' LIMIT 1";
-		
 		$result = $this->sql->query($query);			
+		
+		//If don't have exactly 1 user, they don't exists or there has been a duplicated entry D:
 		if($result->num_rows != 1) return null;
 		$result = $result->fetch_assoc();
 		
-		$hashed_password = Servatrice::encryptPassword($password, substr($result['password_sha512'], 0, 16));
+		//Generate a hashed password using the retrived salt
+		$hashed_password = $this->encryptPassword($password, substr($result['password_sha512'], 0, 16));
 				
+		//If the password hash is not the same as the stored password, return null.
 		if($hashed_password != $result['password_sha512']) return null;
 		
+		//Otherwise the user is all valid and we return the ServatriceUser of said user.
 		return new ServatriceUser($result);	
 	}
 	public function getUser($user) {
-		$query = "SELECT `id`, `admin`, `active`, `name`, `realname`, `email`, `token`, `gender`, `country`, `registrationDate`, `avatar_bmp` FROM {$this->prefix}_users WHERE `username` = '{$user}' OR `id` = '{$user}'  LIMIT 1";
-		$result = $this->sql->query($query);
-			
-		if($result->num_rows != 1) return null;
 	
+		//Retrive all nessary information about the user. We do not want the password as it is unessary.
+		$query = "SELECT `id`, `admin`, `active`, `name`, `realname`, `email`, `token`, `gender`, `country`, `registrationDate`, `avatar_bmp` FROM {$this->prefix}_users WHERE `username` = '{$user}' OR `id` = '{$user}'  LIMIT 1";
+		$result = $this->sql->query($query);		
+
+		//If don't have exactly 1 user, they don't exists or there has been a duplicated entry D:		
+		if($result->num_rows != 1) return null;
+		
+		//Return the ServatriceUser of the queried user.
 		return new ServatriceUser($result->fetch_assoc());		
 	}
 	#endregion
 	
 	#region helpers
 	public function validateCountry($code) {
+		//Validate the country code by checking through each individual code and check for a match.
 		foreach($this->countries as $ccode => $name) if($code == $ccode) return true;	
 		return false;
 	}
-	#endregion
+
+	public function generateToken() {	
+		//Generates a random token that is 16 long for use in email activation. 
+		//When creating an account, generate a token using this method and pass it to the registerUser function. 
+		//Once the user has registered, email the token and a link to a page with authicated it with {TODO: Create token authication method}.
 	
-	#region Statics
-	public static function generateToken() {	
+		//Prepare the token variable
 		$token = '';
+		
+		//All possible characters for the token. Could use special characters (eg: !@#$%^&*()_-+=) but it might break URL's if activation link uses GET method.
 		$tokenChars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890';
+		
+		//Generate the 16 long random token using selected possible characters
 		for ($i = 0; $i < 16; ++$i) $token .= $tokenChars[rand(0, strlen($tokenChars) - 1)];
+		
+		//Return the token
 		return $token;
 	}
-	public static function encryptPassword($password, $salt = '') {
+	public function encryptPassword($password, $salt = '') {
 		if ($salt == '') {
 			$saltChars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890';
 			for ($i = 0; $i < 16; ++$i) $salt .= $saltChars[rand(0, strlen($saltChars) - 1)];
@@ -192,7 +232,9 @@ class Servatrice {
 		for ($i = 0; $i < 1000; ++$i) $key = hash('sha512', $key, true);
 		return $salt . base64_encode($key);
 	}
+
 	public static function getGenderChar($value) {
+		//Converts a number into the appropriate gender character
 		switch($value) { 
 			default: return 'r';
 			case 1: return 'm';
@@ -200,6 +242,7 @@ class Servatrice {
 		}
 	}	
 	public static function getGenderId($value) {
+		//Converts a gender character into appropriate number
 		switch($value) { 
 			default: return 0;
 			case 'm': return 1;
@@ -209,23 +252,45 @@ class Servatrice {
 	#endregion
 }
 
+//The servatrice user
 class ServatriceUser {
+	//Unique ID of the user
 	public $id = 0;
+	
+	//The admin level of this user. 
+	//0 = user, 1 = moderator, 2 = admin
 	public $admin = 0;
+	
+	//If this account is active.
 	public $active = 0;
 	
+	//The username of this user
 	public $name = "Guest";	
+	
+	//The display name of this user
 	public $realname = "Guest";
+	
+	//Email of this user. Should not be displayed, only used for administrative purposes.
 	public $email = "";
+	
+	//The token used to authicate a valid email account (generated via servatrice->generateToken)
 	public $authToken = "";
 	
+	//User's gender.
+	//'r' = Robot, 'm' = Male, 'f' = Female
 	public $gender = 'r';
+	
+	//The 2 character country code. Validate via servatrice->validateCountry.
 	public $country = '';
 	
+	//The day the user registrated
 	public $registrationDate = "";
+	
+	//TODO: Implement avatar use. Maybe a link to a php script that generates the image and caches it?
 	public $avatar_bmp = null;
 	
 	public function __construct($data) {
+		//Wooooh! This is a construction zone, wear your hardhat -> (|:P
 		$this->id = $data['id'];
 		$this->admin = $data['admin'];
 		$this->active = $data['active'];
@@ -236,6 +301,8 @@ class ServatriceUser {
 		$this->gender = $data['gender'];
 		$this->country = $data['country'];
 		$this->registrationDate = $data['registrationDate'];
+		
+		//TODO: Make this work as stated above.
 		$this->avatar_bmp = $data['avatar_bmp'];
 	}
 }
