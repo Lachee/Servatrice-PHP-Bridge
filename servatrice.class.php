@@ -95,6 +95,7 @@ class Servatrice {
 	#endregion
 	
 	#region User Authication
+	
 	public function registerUser($username, $email, $password, $realname = '', $gender = 'r', $country = '', $active = true, $token = '') {
 		
 		//Catch any errors that may occur.
@@ -164,7 +165,6 @@ class Servatrice {
 		//TODO: Catch errors from the query and throw them here.
 		return $errors;
 	}
-	
 	public function getAuthicatedUser($username, $password) {
 		//This checks if the users password is corrent and if it is, returns the ServatriceUser.
 
@@ -288,8 +288,21 @@ class Servatrice {
 		//TODO: Catch errors from the query and throw them here.
 		return $errors;
 	}
-	
-	
+	public function uploadAvatar($userid, $file_path) {		
+		if(empty($file_path)) return;		
+		
+		$fp = fopen($file_path, 'r');
+		$data = fread($fp, filesize($file_path));
+		$data = addslashes($data);
+		fclose($fp);
+		
+		$query = "UPDATE {$this->prefix}_users SET `avatar_bmp` = '{$data}' WHERE `id` = '{$userid}'";
+		$this->sql->query($query);
+	}
+	public function deleteAvatar($userid) {
+		"UPDATE {$this->prefix}_users SET `avatar_bmp` = '' WHERE `id` = '{$userid}'";
+		$this->sql->query($query);
+	}
 	#endregion
 	
 	#region helpers
