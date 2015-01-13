@@ -280,7 +280,7 @@ class Servatrice {
 				`registrationDate` = '". $fields['registrationDate']. "', 
 				`active` = '". $fields['active']. "', 
 				`token` = '". $fields['token']. "'
-			)";
+			WHERE `id` = '". $user->id ."'";
 			
 		//Send the query off.
 		$this->sql->query($query);
